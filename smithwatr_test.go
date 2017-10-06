@@ -52,11 +52,26 @@ var _ = Describe("Smithwatr", func() {
 	})
 
 	Describe("SmithWaterman()", func() {
-		It("calculates alignment", func() {
+		It("calculates identical alignment", func() {
 			seq1 := []rune("AA")
 			seq2 := []rune("AA")
 			res := SmithWaterman(seq1, seq2, b62, conf)
+			Expect(res.Score).To(Equal(8))
+			Expect(res.Identical).To(Equal(2))
+			Expect(res.Similar).To(Equal(0))
+			i, s := res.IdentitySimilarity()
+			Expect(i).To(Equal(float32(100)))
+			Expect(s).To(Equal(float32(100)))
+		})
+
+		It("calculates 'real' alignment", func() {
+			s1 := []rune("MALRGFCSADGSDPLWDWNVTWNTSNPDFTKCF")
+			s2 := []rune("MALRGFCSADGAPLWDWDVTWNTSNPDFTKCF")
+			res := SmithWaterman(s1, s2, b62, conf)
+			identity, similarity := res.IdentitySimilarity()
 			log.Println(res)
+			log.Println(res.Score, identity, similarity)
+
 		})
 	})
 })

@@ -1,7 +1,5 @@
 package smithwatr
 
-import "log"
-
 const different = 0
 const similar = 1
 const identical = 2
@@ -49,11 +47,21 @@ func SmithWaterman(seq1 []rune, seq2 []rune, b62 Blosum62, conf Env) Alignment {
 	res.calculatePath(matrix, max)
 	return res
 }
+func (a *Alignment) IdentitySimilarity() (float32, float32) {
+	var length int
+	if length = a.SeqLen1; length < a.SeqLen2 {
+		length = a.SeqLen2
+	}
+	identity := 100 * float32(a.Identical) / float32(length)
+	similarity := 100 * float32(a.Identical+a.Similar) / float32(length)
+	return identity, similarity
+}
 
-func (a *Alignment) calculatePath(m ScoreMatrix, max MaxScore) {
+func (a *Alignment) calculatePath(matrix ScoreMatrix, max MaxScore) {
 	i := max.I
 	j := max.J
-	cell := m[i][j]
+	cell := &matrix[i][j]
+	a.Score = max.Score
 	score := max.Score
 	for {
 		if score > 0 {
@@ -73,7 +81,7 @@ func (a *Alignment) calculatePath(m ScoreMatrix, max MaxScore) {
 			case horisontal:
 				i -= 1
 			}
-			cell = m[i][j]
+			cell = &matrix[i][j]
 			score = cell.Score
 		} else {
 			break
@@ -89,10 +97,8 @@ func (a *Alignment) calculateScoreMatrix(conf Env,
 		matrix[i] = make([]Score, a.SeqLen2+1)
 	}
 
-	log.Println()
 	for j := 1; j <= a.SeqLen2; j++ {
 		for i := 1; i <= a.SeqLen1; i++ {
-			log.Println(i, j)
 			newScore, newCompass := calculateGap1(matrix, i, j, conf)
 			newScore, newCompass = calculateGap2(matrix, i, j, newScore,
 				newCompass, conf)
@@ -110,8 +116,8 @@ func (a *Alignment) calculateScoreMatrix(conf Env,
 
 func calculateMatch(a *Alignment, matrix [][]Score, i int, j int, newScore int,
 	newCompass int, b62 Blosum62) int {
-	cellDiagonal := matrix[i-1][j-1]
-	cell := matrix[i][j]
+	cellDiagonal := &matrix[i-1][j-1]
+	cell := &matrix[i][j]
 	r1 := a.Seq1[i-1]
 	r2 := a.Seq2[j-1]
 	gain := b62[r1][r2]
@@ -138,9 +144,8 @@ func calculateMatch(a *Alignment, matrix [][]Score, i int, j int, newScore int,
 func calculateGap1(matrix [][]Score, i int, j int, conf Env) (int, int) {
 	newCompass := 0
 	newScore := 0
-	log.Println("Matrix length", len(matrix[i]))
-	cellUp := matrix[i][j-1]
-	cell := matrix[i][j]
+	cellUp := &matrix[i][j-1]
+	cell := &matrix[i][j]
 	if cellUp.Gap2 <= conf.GapExtends && cellUp.Score <= conf.GapOpens {
 		cell.Gap2 = 0
 	} else if cellUp.Gap2-conf.GapExtends > cellUp.Score-conf.GapOpens {
@@ -156,8 +161,8 @@ func calculateGap1(matrix [][]Score, i int, j int, conf Env) (int, int) {
 
 func calculateGap2(matrix [][]Score, i int, j int, newScore int,
 	newCompass int, conf Env) (int, int) {
-	cellLeft := matrix[i-1][j]
-	cell := matrix[i][j]
+	cellLeft := &matrix[i-1][j]
+	cell := &matrix[i][j]
 	if cellLeft.Gap1 <= conf.GapExtends && cellLeft.Score <= conf.GapOpens {
 		cell.Gap1 = 0
 	} else if cellLeft.Gap1-conf.GapExtends > cellLeft.Score-conf.GapOpens {
