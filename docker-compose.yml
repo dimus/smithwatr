@@ -3,6 +3,8 @@ services:
   app:
     build:
       context: .
+    volumes:
+      - .:/go/src/github.com/dimus/smithwatr/
     container_name: smithwatr
     image: dimus/smithwatr
     depends_on:
