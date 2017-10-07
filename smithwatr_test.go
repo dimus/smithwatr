@@ -76,4 +76,12 @@ var _ = Describe("Smithwatr", func() {
 			log.Println(res.Show(50))
 		})
 	})
+
+	Describe("ImportData()", func() {
+		It("imports data to database", func() {
+			ImportData(db, conf)
+			Expect(GenesEmpty(db)).To(Equal(false))
+		})
+	})
+
 })

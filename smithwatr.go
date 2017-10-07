@@ -1,10 +1,13 @@
 package smithwatr
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	_ "github.com/lib/pq"
 )
 
 type Blosum62 map[rune]map[rune]int
@@ -154,4 +157,13 @@ func InitBlosum62() Blosum62 {
 		'F': -4, 'P': -4, 'S': -4, 'T': -4, 'W': -4, 'Y': -4, 'V': -4, 'B': -4,
 		'Z': -4, 'X': -4, '*': 1}
 	return b62
+}
+
+func Connect(conf Env) (*sql.DB, error) {
+	var db *sql.DB
+	var err error
+	params := fmt.Sprintf("postgres://%s@%s/%s?sslmode=disable",
+		conf.DbUser, conf.DbHost, conf.Db)
+	db, err = sql.Open("postgres", params)
+	return db, err
 }
