@@ -62,16 +62,18 @@ var _ = Describe("Smithwatr", func() {
 			i, s := res.IdentitySimilarity()
 			Expect(i).To(Equal(float32(100)))
 			Expect(s).To(Equal(float32(100)))
+			log.Println(res.Show(50))
 		})
 
 		It("calculates 'real' alignment", func() {
-			s1 := []rune("MALRGFCSADGSDPLWDWNVTWNTSNPDFTKCF")
-			s2 := []rune("MALRGFCSADGAPLWDWDVTWNTSNPDFTKCF")
+			s1 := []rune("MADRGFCSADGSDPLWDWNVTWNTSNPDFTKCF")
+			s2 := []rune("MANRGFCSADGWPLWDWDVTWNTSNPDFTKCF")
 			res := SmithWaterman(s1, s2, b62, conf)
 			identity, similarity := res.IdentitySimilarity()
-			log.Println(res)
-			log.Println(res.Score, identity, similarity)
-
+			Expect(res.Score).To(Equal(177))
+			Expect(identity).To(BeNumerically("~", 87.8, 0.1))
+			Expect(similarity).To(BeNumerically("~", 93.9, 0.1))
+			log.Println(res.Show(50))
 		})
 	})
 })

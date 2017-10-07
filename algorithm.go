@@ -4,9 +4,19 @@ const different = 0
 const similar = 1
 const identical = 2
 
-const diagonal = 0
-const vertical = 1
-const horisontal = 2
+const substitution = 0
+const deletion = 1
+const insertion = 2
+
+type Match struct {
+	L1    rune
+	L2    rune
+	I     int
+	J     int
+	Score int
+	Type  int
+	Subst int
+}
 
 type Alignment struct {
 	Seq1      []rune
@@ -16,6 +26,7 @@ type Alignment struct {
 	Score     int
 	Identical int
 	Similar   int
+	Path      []Match
 }
 
 type MaxScore struct {
@@ -24,15 +35,7 @@ type MaxScore struct {
 	J     int
 }
 
-type Score struct {
-	Gap1    int
-	Gap2    int
-	Score   int
-	Compass int
-	Match   int
-}
-
-type ScoreMatrix [][]Score
+type ScoreMatrix [][]int
 
 // SmithWaterman calculates results of alignment for two peptide sequences
 // according to Smith-Waterman algorithm. It takes aminoacid sequences of
@@ -44,9 +47,71 @@ func SmithWaterman(seq1 []rune, seq2 []rune, b62 Blosum62, conf Env) Alignment {
 	res.SeqLen1 = len(seq1)
 	res.SeqLen2 = len(seq2)
 	matrix, max := res.calculateScoreMatrix(conf, b62)
+	res.Score = max.Score
 	res.calculatePath(matrix, max)
 	return res
 }
+
+func (a *Alignment) Show(cols int) string {
+	res := []rune{'\n'}
+	i := 0
+	offset := 0
+	for {
+		if i == cols {
+			res = append(res, showRow(a.Path[offset:offset+i])...)
+			res = append(res, '\n')
+			i = 0
+			offset += cols
+		} else if offset+i == len(a.Path) {
+			break
+		}
+		i++
+	}
+	res = append(res, showRow(a.Path[offset:offset+i])...)
+	res = append(res, '\n')
+	return string(res)
+}
+
+func showRow(row []Match) []rune {
+	res := []rune{}
+	l := len(row)
+	line1 := make([]rune, l)
+	line2 := make([]rune, l)
+	line3 := make([]rune, l)
+
+	for i, v := range row {
+		l1 := v.L1
+		if v.Type == insertion {
+			l1 = '-'
+		}
+		l2 := v.L2
+		if v.Type == deletion {
+			l2 = '-'
+		}
+
+		line1[i] = l1
+		line2[i] = alignmentRune(v)
+		line3[i] = l2
+	}
+	res = append(res, line1...)
+	res = append(res, '\n')
+	res = append(res, line2...)
+	res = append(res, '\n')
+	res = append(res, line3...)
+	res = append(res, '\n')
+	return res
+}
+
+func alignmentRune(m Match) rune {
+	r := ' '
+	if m.Subst == identical {
+		r = '|'
+	} else if m.Subst == similar {
+		r = ':'
+	}
+	return r
+}
+
 func (a *Alignment) IdentitySimilarity() (float32, float32) {
 	var length int
 	if length = a.SeqLen1; length < a.SeqLen2 {
@@ -57,126 +122,116 @@ func (a *Alignment) IdentitySimilarity() (float32, float32) {
 	return identity, similarity
 }
 
-func (a *Alignment) calculatePath(matrix ScoreMatrix, max MaxScore) {
-	i := max.I
-	j := max.J
-	cell := &matrix[i][j]
-	a.Score = max.Score
-	score := max.Score
-	for {
-		if score > 0 {
-			switch cell.Match {
-			case identical:
-				a.Identical += 1
-			case similar:
-				a.Similar += 1
-			}
-
-			switch cell.Compass {
-			case diagonal:
-				i -= 1
-				j -= 1
-			case vertical:
-				j -= 1
-			case horisontal:
-				i -= 1
-			}
-			cell = &matrix[i][j]
-			score = cell.Score
-		} else {
-			break
-		}
-	}
-}
-
 func (a *Alignment) calculateScoreMatrix(conf Env,
 	b62 Blosum62) (ScoreMatrix, MaxScore) {
 	var max MaxScore
+	var gain, score int
 	matrix := make(ScoreMatrix, a.SeqLen1+1)
 	for i := range matrix {
-		matrix[i] = make([]Score, a.SeqLen2+1)
+		matrix[i] = make([]int, a.SeqLen2+1)
 	}
 
 	for j := 1; j <= a.SeqLen2; j++ {
 		for i := 1; i <= a.SeqLen1; i++ {
-			newScore, newCompass := calculateGap1(matrix, i, j, conf)
-			newScore, newCompass = calculateGap2(matrix, i, j, newScore,
-				newCompass, conf)
-			score := calculateMatch(a, matrix, i, j, newScore, newCompass, b62)
-			if max.Score < score {
-				max.Score = score
-				max.I = i
-				max.J = j
+			if gain = b62[a.Seq1[i-1]][a.Seq2[j-1]]; gain > 0 {
+				score = matrix[i-1][j-1] + gain
+			} else {
+				cells := []int{matrix[i-1][j-1] + gain, del(matrix, i, j, conf),
+					ins(matrix, i, j, conf)}
+				score = maximum(cells)
 			}
-
+			if score < 0 {
+				score = 0
+			}
+			matrix[i][j] = score
+			if score > max.Score {
+				max = MaxScore{score, i, j}
+			}
 		}
 	}
 	return matrix, max
 }
 
-func calculateMatch(a *Alignment, matrix [][]Score, i int, j int, newScore int,
-	newCompass int, b62 Blosum62) int {
-	cellDiagonal := &matrix[i-1][j-1]
-	cell := &matrix[i][j]
-	r1 := a.Seq1[i-1]
-	r2 := a.Seq2[j-1]
-	gain := b62[r1][r2]
-	if r1 == r2 {
-		cell.Match = identical
-	} else if gain > 0 {
-		cell.Match = similar
-	}
-
-	if s := cellDiagonal.Score + gain; s > newScore {
-		newScore = s
-		newCompass = diagonal
-	}
-
-	if newScore < 0 {
-		newScore = 0
-	}
-
-	cell.Score = newScore
-	cell.Compass = newCompass
-	return newScore
-}
-
-func calculateGap1(matrix [][]Score, i int, j int, conf Env) (int, int) {
-	newCompass := 0
-	newScore := 0
-	cellUp := &matrix[i][j-1]
-	cell := &matrix[i][j]
-	if cellUp.Gap2 <= conf.GapExtends && cellUp.Score <= conf.GapOpens {
-		cell.Gap2 = 0
-	} else if cellUp.Gap2-conf.GapExtends > cellUp.Score-conf.GapOpens {
-		newScore = cellUp.Gap2 - conf.GapExtends
-		cell.Gap2 = newScore
-		newCompass = horisontal
-	} else {
-		newScore = cellUp.Score - conf.GapOpens
-		newCompass = horisontal
-	}
-	return newScore, newCompass
-}
-
-func calculateGap2(matrix [][]Score, i int, j int, newScore int,
-	newCompass int, conf Env) (int, int) {
-	cellLeft := &matrix[i-1][j]
-	cell := &matrix[i][j]
-	if cellLeft.Gap1 <= conf.GapExtends && cellLeft.Score <= conf.GapOpens {
-		cell.Gap1 = 0
-	} else if cellLeft.Gap1-conf.GapExtends > cellLeft.Score-conf.GapOpens {
-		cell.Gap1 = cellLeft.Gap1 - conf.GapExtends
-		if cell.Gap1 > newScore {
-			newScore = cell.Gap1
-			newCompass = vertical
-		}
-	} else {
-		cell.Gap1 = cellLeft.Score - conf.GapOpens
-		if cell.Gap1 > newScore {
-			newScore = cell.Gap1
-			newCompass = vertical
+func (a *Alignment) calculatePath(matrix ScoreMatrix, max MaxScore) {
+	var path []Match
+	var match Match
+	i := max.I
+	j := max.J
+	score := matrix[i][j]
+	for {
+		if score > 0 {
+			match, i, j = previous(matrix, i, j, a)
+			path = append(path, match)
+			score = matrix[i][j]
+		} else {
+			break
 		}
 	}
-	return newScore, newCompass
+	a.Path = Reverse(path)
+	// a.Path = path
+}
+
+func Reverse(path []Match) []Match {
+	last := len(path) - 1
+	for i := 0; i < len(path)/2; i++ {
+		path[i], path[last-i] = path[last-i], path[i]
+	}
+	return path
+}
+
+func previous(matrix ScoreMatrix, i int, j int,
+	a *Alignment) (Match, int, int) {
+	match := Match{L1: a.Seq1[i-1], L2: a.Seq2[j-1], I: i, J: j,
+		Score: matrix[i][j]}
+	candidates := [][]int{{matrix[i-1][j-1], substitution},
+		{matrix[i][j-1], insertion},
+		{matrix[i-1][j], deletion}}
+	prev := candidates[0]
+	for _, v := range candidates[1:len(candidates)] {
+		if prev[0] < v[0] {
+			prev = v
+		}
+	}
+
+	match.Type = prev[1]
+	if match.Type == substitution {
+		if a.Seq1[i-1] == a.Seq2[j-1] {
+			match.Subst = identical
+			a.Identical += 1
+		} else if matrix[i][j]-prev[0] > 0 {
+			match.Subst = similar
+			a.Similar += 1
+		} else {
+			match.Subst = different
+		}
+	}
+	switch match.Type {
+	case deletion:
+		i = i - 1
+	case insertion:
+		j = j - 1
+	default:
+		i = i - 1
+		j = j - 1
+	}
+
+	return match, i, j
+}
+
+func del(matrix ScoreMatrix, i int, j int, conf Env) int {
+	return matrix[i-1][j] - conf.GapExtends
+}
+
+func ins(matrix ScoreMatrix, i int, j int, conf Env) int {
+	return matrix[i][j-1] - conf.GapExtends
+}
+
+func maximum(ary []int) int {
+	max := ary[0]
+	for _, v := range ary[1 : len(ary)-1] {
+		if max < v {
+			max = v
+		}
+	}
+	return max
 }
