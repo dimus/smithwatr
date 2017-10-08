@@ -53,9 +53,10 @@ var _ = Describe("Smithwatr", func() {
 
 	Describe("SmithWaterman()", func() {
 		It("calculates identical alignment", func() {
-			seq1 := []rune("AA")
-			seq2 := []rune("AA")
-			res := SmithWaterman(seq1, seq2, b62, conf)
+			g1 := Gene{Seq: []rune("AA"), SeqLen: 2, Gene: "gene1"}
+			g2 := Gene{Seq: []rune("AA"), SeqLen: 2, Gene: "gene2"}
+
+			res := SmithWaterman(g1, g2, b62, conf)
 			Expect(res.Score).To(Equal(8))
 			Expect(res.Identical).To(Equal(2))
 			Expect(res.Similar).To(Equal(0))
@@ -67,8 +68,10 @@ var _ = Describe("Smithwatr", func() {
 
 		It("calculates 'real' alignment", func() {
 			s1 := []rune("MADRGFCSADGSDPLWDWNVTWNTSNPDFTKCF")
+			g1 := Gene{Seq: s1, SeqLen: len(s1), Gene: "gene1"}
 			s2 := []rune("MANRGFCSADGWPLWDWDVTWNTSNPDFTKCF")
-			res := SmithWaterman(s1, s2, b62, conf)
+			g2 := Gene{Seq: s2, SeqLen: len(s2), Gene: "gene2"}
+			res := SmithWaterman(g1, g2, b62, conf)
 			identity, similarity := res.IdentitySimilarity()
 			Expect(res.Score).To(Equal(177))
 			Expect(identity).To(BeNumerically("~", 87.8, 0.1))
@@ -87,7 +90,7 @@ var _ = Describe("Smithwatr", func() {
 	Describe("Align()", func() {
 		It("Aligns genes and saves data", func() {
 			ImportData(db, conf)
-			Align(db, 1, 2, -1, b62, conf)
+			Align(db, 1, 2, 34, b62, conf)
 		})
 	})
 })

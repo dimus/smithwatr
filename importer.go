@@ -17,7 +17,8 @@ type Gene struct {
 	GenomeID int
 	Gene     string
 	Desc     string
-	Seq      string
+	Seq      []rune
+	SeqLen   int
 }
 
 func ImportData(db *sql.DB, conf Env) {
@@ -80,7 +81,7 @@ func collectGenes(scanner *bufio.Scanner, genomeID int) []Gene {
 		line := scanner.Text()
 		if line[0] == '>' {
 			if gene.Gene != "" {
-				gene.Seq = joinSequence(seq)
+				gene.Seq = []rune(joinSequence(seq))
 				res = append(res, gene)
 			}
 			geneName, description := parseGeneHeader(line)
@@ -115,7 +116,8 @@ func saveGenes(db *sql.DB, genes []Gene) {
 	Check(err)
 
 	for _, p := range batch {
-		_, err = stmt.Exec(p.GenomeID, p.Gene, p.Desc, p.Seq)
+		_, err = stmt.Exec(p.GenomeID, p.Gene, p.Desc,
+			string(p.Seq))
 		Check(err)
 	}
 

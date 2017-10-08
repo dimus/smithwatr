@@ -1,5 +1,7 @@
 package smithwatr
 
+import "fmt"
+
 const different = 0
 const similar = 1
 const identical = 2
@@ -19,10 +21,8 @@ type Match struct {
 }
 
 type Alignment struct {
-	Seq1      []rune
-	Seq2      []rune
-	SeqLen1   int
-	SeqLen2   int
+	Gene1     Gene
+	Gene2     Gene
 	Score     int
 	Identical int
 	Similar   int
@@ -40,12 +40,10 @@ type ScoreMatrix [][]int
 // SmithWaterman calculates results of alignment for two peptide sequences
 // according to Smith-Waterman algorithm. It takes aminoacid sequences of
 // two proteins and returns result of calculation in a structure
-func SmithWaterman(seq1 []rune, seq2 []rune, b62 Blosum62, conf Env) Alignment {
+func SmithWaterman(g1 Gene, g2 Gene, b62 Blosum62, conf Env) Alignment {
 	var res Alignment
-	res.Seq1 = seq1
-	res.Seq2 = seq2
-	res.SeqLen1 = len(seq1)
-	res.SeqLen2 = len(seq2)
+	res.Gene1 = g1
+	res.Gene2 = g2
 	matrix, max := res.calculateScoreMatrix(conf, b62)
 	res.Score = max.Score
 	res.calculatePath(matrix, max)
@@ -54,6 +52,19 @@ func SmithWaterman(seq1 []rune, seq2 []rune, b62 Blosum62, conf Env) Alignment {
 
 func (a *Alignment) Show(cols int) string {
 	res := []rune{'\n'}
+	res = append(res, []rune(a.Gene1.Gene)...)
+	res = append(res, []rune(fmt.Sprintf(" length: %d\n", a.Gene1.SeqLen))...)
+	res = append(res, formatSeq(a.Gene1.Seq, cols)...)
+	res = append(res, []rune(a.Gene2.Gene)...)
+	res = append(res, []rune(fmt.Sprintf(" length: %d\n", a.Gene2.SeqLen))...)
+	res = append(res, formatSeq(a.Gene2.Seq, cols)...)
+	res = append(res, '\n')
+	res = append(res, []rune(fmt.Sprintf("Score: %d, ", a.Score))...)
+	ident, sim := a.IdentitySimilarity()
+	res = append(res, []rune(fmt.Sprintf("Identical: %0.1f, Similar: %0.1f",
+		ident, sim))...)
+	res = append(res, '\n', '\n')
+
 	i := 0
 	offset := 0
 	for {
@@ -70,6 +81,20 @@ func (a *Alignment) Show(cols int) string {
 	res = append(res, showRow(a.Path[offset:offset+i])...)
 	res = append(res, '\n')
 	return string(res)
+}
+
+func formatSeq(seq []rune, cols int) []rune {
+	l := len(seq)
+	var res []rune
+	for i := 0; i < l; i += cols {
+		end := i + cols
+		if end > l {
+			end = l
+		}
+		res = append(res, seq[i:end]...)
+		res = append(res, '\n')
+	}
+	return res
 }
 
 func showRow(row []Match) []rune {
@@ -114,8 +139,8 @@ func alignmentRune(m Match) rune {
 
 func (a *Alignment) IdentitySimilarity() (float32, float32) {
 	var length int
-	if length = a.SeqLen1; length < a.SeqLen2 {
-		length = a.SeqLen2
+	if length = a.Gene1.SeqLen; length < a.Gene2.SeqLen {
+		length = a.Gene2.SeqLen
 	}
 	identity := 100 * float32(a.Identical) / float32(length)
 	similarity := 100 * float32(a.Identical+a.Similar) / float32(length)
@@ -126,14 +151,14 @@ func (a *Alignment) calculateScoreMatrix(conf Env,
 	b62 Blosum62) (ScoreMatrix, MaxScore) {
 	var max MaxScore
 	var gain, score int
-	matrix := make(ScoreMatrix, a.SeqLen1+1)
+	matrix := make(ScoreMatrix, a.Gene1.SeqLen+1)
 	for i := range matrix {
-		matrix[i] = make([]int, a.SeqLen2+1)
+		matrix[i] = make([]int, a.Gene2.SeqLen+1)
 	}
 
-	for j := 1; j <= a.SeqLen2; j++ {
-		for i := 1; i <= a.SeqLen1; i++ {
-			if gain = b62[a.Seq1[i-1]][a.Seq2[j-1]]; gain > 0 {
+	for j := 1; j <= a.Gene2.SeqLen; j++ {
+		for i := 1; i <= a.Gene1.SeqLen; i++ {
+			if gain = b62[a.Gene1.Seq[i-1]][a.Gene2.Seq[j-1]]; gain > 0 {
 				score = matrix[i-1][j-1] + gain
 			} else {
 				cells := []int{matrix[i-1][j-1] + gain, del(matrix, i, j, conf),
@@ -181,7 +206,7 @@ func Reverse(path []Match) []Match {
 
 func previous(matrix ScoreMatrix, i int, j int,
 	a *Alignment) (Match, int, int) {
-	match := Match{L1: a.Seq1[i-1], L2: a.Seq2[j-1], I: i, J: j,
+	match := Match{L1: a.Gene1.Seq[i-1], L2: a.Gene2.Seq[j-1], I: i, J: j,
 		Score: matrix[i][j]}
 	candidates := [][]int{{matrix[i-1][j-1], substitution},
 		{matrix[i][j-1], insertion},
@@ -195,7 +220,7 @@ func previous(matrix ScoreMatrix, i int, j int,
 
 	match.Type = prev[1]
 	if match.Type == substitution {
-		if a.Seq1[i-1] == a.Seq2[j-1] {
+		if a.Gene1.Seq[i-1] == a.Gene2.Seq[j-1] {
 			match.Subst = identical
 			a.Identical += 1
 		} else if matrix[i][j]-prev[0] > 0 {

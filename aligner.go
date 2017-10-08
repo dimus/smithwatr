@@ -9,22 +9,12 @@ import (
 	"github.com/lib/pq"
 )
 
-type GeneMatcher struct {
-	Gene1        Gene
-	Gene2        Gene
-	Score        int
-	Identical    int
-	Similar      int
-	IdentPercent float32
-	SimPercent   float32
-}
-
 func Align(db *sql.DB, genome1 int, genome2 int, num int,
 	b62 Blosum62, conf Env) {
 	g1 := GetGenome(db, genome1, num)
 	g2 := GetGenome(db, genome2, num)
-	mChan := make(chan GeneMatcher)
-	resChan := make(chan GeneMatcher)
+	mChan := make(chan Alignment)
+	resChan := make(chan Alignment)
 	var mWG sync.WaitGroup
 
 	for i := 1; i <= conf.WorkersNum; i++ {
@@ -36,7 +26,7 @@ func Align(db *sql.DB, genome1 int, genome2 int, num int,
 
 	for _, gene1 := range g1 {
 		for _, gene2 := range g2 {
-			mChan <- GeneMatcher{Gene1: gene1, Gene2: gene2}
+			mChan <- Alignment{Gene1: gene1, Gene2: gene2}
 		}
 	}
 	close(mChan)
@@ -45,8 +35,8 @@ func Align(db *sql.DB, genome1 int, genome2 int, num int,
 	close(resChan)
 }
 
-func saveResults(db *sql.DB, resChan <-chan GeneMatcher) {
-	res := make([]GeneMatcher, 1000)
+func saveResults(db *sql.DB, resChan <-chan Alignment) {
+	res := make([]Alignment, 1000)
 	i := 0
 	k := 1
 	for gm := range resChan {
@@ -55,6 +45,7 @@ func saveResults(db *sql.DB, resChan <-chan GeneMatcher) {
 		if i%1000 == 0 {
 			bulkSave(db, res)
 			log.Printf("%d: saved", i*k)
+			log.Printf(gm.Show(80))
 			i = 0
 			k++
 		}
@@ -62,7 +53,7 @@ func saveResults(db *sql.DB, resChan <-chan GeneMatcher) {
 	bulkSave(db, res[0:i-1])
 }
 
-func bulkSave(db *sql.DB, gms []GeneMatcher) {
+func bulkSave(db *sql.DB, gms []Alignment) {
 	batch := gms
 	columns := []string{"gene_id", "match_gene_id", "score", "identical_num",
 		"similar_num", "ident_percent", "sim_percent"}
@@ -73,8 +64,9 @@ func bulkSave(db *sql.DB, gms []GeneMatcher) {
 	Check(err)
 
 	for _, gm := range batch {
+		ident, sim := gm.IdentitySimilarity()
 		_, err = stmt.Exec(gm.Gene1.ID, gm.Gene2.ID, gm.Score, gm.Identical,
-			gm.Similar, gm.IdentPercent, gm.SimPercent)
+			gm.Similar, ident, sim)
 		Check(err)
 	}
 
@@ -94,16 +86,11 @@ and start with an empty database.
 	Check(err)
 }
 
-func matcherWorker(db *sql.DB, mWG sync.WaitGroup, mChan <-chan GeneMatcher,
-	resChan chan<- GeneMatcher, b62 Blosum62, conf Env) {
+func matcherWorker(db *sql.DB, mWG sync.WaitGroup, mChan <-chan Alignment,
+	resChan chan<- Alignment, b62 Blosum62, conf Env) {
 	defer mWG.Done()
 	for g := range mChan {
-		res := SmithWaterman([]rune(g.Gene1.Seq), []rune(g.Gene2.Seq), b62, conf)
-		g.Score = res.Score
-		g.Identical = res.Identical
-		g.Similar = res.Similar
-		g.IdentPercent, g.SimPercent = res.IdentitySimilarity()
-		resChan <- g
+		resChan <- SmithWaterman(g.Gene1, g.Gene2, b62, conf)
 	}
 }
 
@@ -122,8 +109,9 @@ func GetGenome(db *sql.DB, genome int, num int) []Gene {
 	for rows.Next() {
 		err := rows.Scan(&ID, &genomeID, &gene, &sequence)
 		Check(err)
-
-		gene := Gene{ID: ID, GenomeID: genomeID, Gene: gene, Seq: sequence}
+		seqRunes := []rune(sequence)
+		gene := Gene{ID: ID, GenomeID: genomeID, Gene: gene, Seq: seqRunes,
+			SeqLen: len(seqRunes)}
 		res = append(res, gene)
 	}
 	err = rows.Close()
