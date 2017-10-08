@@ -20,6 +20,7 @@ type Env struct {
 	DataDir    string
 	GapOpens   int
 	GapExtends int
+	WorkersNum int
 }
 
 // Check handles error checking, and panicks if error is not nil.
@@ -32,8 +33,8 @@ func Check(err error) {
 // EnvVars imports all environment variables relevant for the data conversion.
 func EnvVars() Env {
 	emptyEnvs := make([]string, 0, 4)
-	envVars := [6]string{"POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_DB",
-		"DATA_DIR", "GAP_OPEN_PENTALTY", "GAP_EXTENSION_PENALTY"}
+	envVars := [7]string{"POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_DB",
+		"DATA_DIR", "GAP_OPEN_PENTALTY", "GAP_EXTENSION_PENALTY", "WORKERS_NUM"}
 	for i, v := range envVars {
 		val, ok := os.LookupEnv(v)
 		if ok {
@@ -51,9 +52,11 @@ func EnvVars() Env {
 	Check(err)
 	gext, err := strconv.Atoi(envVars[5])
 	Check(err)
+	workersNum, err := strconv.Atoi(envVars[6])
 
 	return Env{DbHost: envVars[0], DbUser: envVars[1], Db: envVars[2],
-		DataDir: envVars[3], GapOpens: gopen, GapExtends: gext}
+		DataDir: envVars[3], GapOpens: gopen, GapExtends: gext,
+		WorkersNum: workersNum}
 }
 
 // InitBlosum62 creates a map with BLOSSUM62 weights values

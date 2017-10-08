@@ -84,4 +84,10 @@ var _ = Describe("Smithwatr", func() {
 		})
 	})
 
+	Describe("Align()", func() {
+		It("Aligns genes and saves data", func() {
+			ImportData(db, conf)
+			Align(db, 1, 2, -1, b62, conf)
+		})
+	})
 })
