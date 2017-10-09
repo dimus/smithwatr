@@ -9,13 +9,12 @@ import (
 	"github.com/lib/pq"
 )
 
-func Align(db *sql.DB, genome1 int, genome2 int, num int,
-	b62 Blosum62, conf Env) {
-	g1 := GetGenome(db, genome1, num)
-	g2 := GetGenome(db, genome2, num)
+func Align(db *sql.DB, genomeTarget int, limit int, b62 Blosum62, conf Env) {
 	mChan := make(chan Alignment)
 	resChan := make(chan Alignment)
 	var mWG sync.WaitGroup
+
+	genesTarget := GetGenome(db, genomeTarget, limit)
 
 	for i := 1; i <= conf.WorkersNum; i++ {
 		mWG.Add(1)
@@ -24,15 +23,56 @@ func Align(db *sql.DB, genome1 int, genome2 int, num int,
 
 	go saveResults(db, resChan)
 
-	for _, gene1 := range g1 {
-		for _, gene2 := range g2 {
-			mChan <- Alignment{Gene1: gene1, Gene2: gene2}
+	count := 0
+	for {
+		count += 1
+		gene := getAJob(db)
+		if gene.ID > 0 {
+			log.Printf("Alignment %d for %s, size %d", count, gene.Gene, gene.SeqLen)
+			for _, g := range genesTarget {
+				mChan <- Alignment{Gene1: gene, Gene2: g}
+			}
+			err := db.QueryRow(`UPDATE jobs
+			                      SET status = 'finished'
+														WHERE gene_id = $1`, gene.ID).Scan()
+			if err != sql.ErrNoRows {
+				Check(err)
+			}
+		} else {
+			close(mChan)
+			break
 		}
 	}
-	close(mChan)
-
 	mWG.Wait()
 	close(resChan)
+}
+
+func getAJob(db *sql.DB) Gene {
+	var id, genomeID int
+	var gene, sequence string
+
+	q1 := `SELECT id, genome_id, gene, sequence 
+	        FROM genes g 
+					  JOIN jobs j on j.gene_id = g.id
+					WHERE j.status = 'pending'
+					LIMIT 1`
+
+	q2 := `UPDATE jobs
+	         SET status = 'started'
+					   WHERE gene_id = $1`
+
+	err := db.QueryRow(q1).Scan(&id, &genomeID, &gene, &sequence)
+	Check(err)
+
+	seqRunes := []rune(sequence)
+
+	err = db.QueryRow(q2, id).Scan()
+	if err != sql.ErrNoRows {
+		Check(err)
+	}
+
+	return Gene{ID: id, GenomeID: genomeID, Gene: gene, Seq: seqRunes,
+		SeqLen: len(seqRunes)}
 }
 
 func saveResults(db *sql.DB, resChan <-chan Alignment) {
@@ -44,8 +84,7 @@ func saveResults(db *sql.DB, resChan <-chan Alignment) {
 		i++
 		if i%1000 == 0 {
 			bulkSave(db, res)
-			log.Printf("%d: saved", i*k)
-			log.Printf(gm.Show(80))
+			// log.Printf("%d: saved", i*k)
 			i = 0
 			k++
 		}

@@ -3,7 +3,9 @@ package smithwatr
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -34,7 +36,7 @@ func Check(err error) {
 func EnvVars() Env {
 	emptyEnvs := make([]string, 0, 4)
 	envVars := [7]string{"POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_DB",
-		"DATA_DIR", "GAP_OPEN_PENTALTY", "GAP_EXTENSION_PENALTY", "WORKERS_NUM"}
+		"DATA_DIR", "GAP_OPEN_PENTALTY", "GAP_EXTENSION_PENALTY", "CPU_CAPACITY"}
 	for i, v := range envVars {
 		val, ok := os.LookupEnv(v)
 		if ok {
@@ -52,11 +54,18 @@ func EnvVars() Env {
 	Check(err)
 	gext, err := strconv.Atoi(envVars[5])
 	Check(err)
-	workersNum, err := strconv.Atoi(envVars[6])
 
 	return Env{DbHost: envVars[0], DbUser: envVars[1], Db: envVars[2],
 		DataDir: envVars[3], GapOpens: gopen, GapExtends: gext,
-		WorkersNum: workersNum}
+		WorkersNum: calculateWorkersNum(envVars[6])}
+}
+
+func calculateWorkersNum(cpuLoad string) int {
+	load, err := strconv.ParseFloat(cpuLoad, 64)
+	Check(err)
+	cpuNum := runtime.NumCPU()
+	workersNum := int(math.Ceil(float64(cpuNum) * load))
+	return workersNum
 }
 
 // InitBlosum62 creates a map with BLOSSUM62 weights values
