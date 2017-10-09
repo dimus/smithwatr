@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -22,6 +23,10 @@ type Gene struct {
 }
 
 func ImportData(db *sql.DB, conf Env) {
+	if NotEmpty(db, "genes") {
+		return
+	}
+
 	d, err := os.Open(conf.DataDir)
 	Check(err)
 	defer func() {
@@ -29,29 +34,33 @@ func ImportData(db *sql.DB, conf Env) {
 		Check(err)
 	}()
 
-	if GenesEmpty(db) {
-		names, err := d.Readdirnames(-1)
-		Check(err)
-		for _, name := range names {
-			l := len(name)
-			if name[l-3:l] == ".gz" {
-				genomeID := getGenomeID(db, name)
-				path := filepath.Join(conf.DataDir, name)
-				processFile(db, path, genomeID)
-			}
+	names, err := d.Readdirnames(-1)
+	Check(err)
+	for _, name := range names {
+		l := len(name)
+		if name[l-3:l] == ".gz" {
+			genomeID := getGenomeID(db, name)
+			path := filepath.Join(conf.DataDir, name)
+			processFile(db, path, genomeID)
 		}
 	}
 }
 
-func GenesEmpty(db *sql.DB) bool {
-	var count int
-	q := `SELECT count(*) from genes`
-	err := db.QueryRow(q).Scan(&count)
-	Check(err)
-	if count == 0 {
-		return true
+func ImportJobs(db *sql.DB, genomeID int) {
+	if NotEmpty(db, "jobs") {
+		return
 	}
-	return false
+
+	q := "INSERT INTO jobs (gene_id) (SELECT id FROM genes WHERE genome_id = $1)"
+	db.QueryRow(q, genomeID)
+}
+
+func NotEmpty(db *sql.DB, t string) bool {
+	var exists bool
+	q := "SELECT EXISTS(SELECT * FROM %s) AS has_rows"
+	err := db.QueryRow(fmt.Sprintf(q, t)).Scan(&exists)
+	Check(err)
+	return exists
 }
 
 func getGenomeID(db *sql.DB, name string) int {

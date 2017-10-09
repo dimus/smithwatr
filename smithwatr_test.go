@@ -81,16 +81,24 @@ var _ = Describe("Smithwatr", func() {
 	})
 
 	Describe("ImportData()", func() {
-		It("imports data to database", func() {
+		It("imports data to the database", func() {
 			ImportData(db, conf)
-			Expect(GenesEmpty(db)).To(Equal(false))
+			Expect(NotEmpty(db, "genes")).To(Equal(true))
 		})
 	})
 
-	Describe("Align()", func() {
-		It("Aligns genes and saves data", func() {
+	Describe("ImportJobs()", func() {
+		It("imports jobs to the database", func() {
 			ImportData(db, conf)
-			Align(db, 1, 2, 34, b62, conf)
+			ImportJobs(db, 1)
+			Expect(NotEmpty(db, "jobs")).To(Equal(true))
 		})
 	})
+
+	// Describe("Align()", func() {
+	// 	It("Aligns genes and saves data", func() {
+	// 		ImportData(db, conf)
+	// 		Align(db, 2, 3, 34, b62, conf)
+	// 	})
+	// })
 })

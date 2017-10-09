@@ -1,6 +1,8 @@
 package smithwatr
 
-import "fmt"
+import (
+	"fmt"
+)
 
 const different = 0
 const similar = 1
