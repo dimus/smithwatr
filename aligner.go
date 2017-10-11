@@ -51,25 +51,25 @@ func getAJob(db *sql.DB) Gene {
 	var id, genomeID int
 	var gene, sequence string
 
-	q1 := `SELECT id, genome_id, gene, sequence 
-	        FROM genes g 
-					  JOIN jobs j on j.gene_id = g.id
-					WHERE j.status = 'pending'
-					LIMIT 1`
-
-	q2 := `UPDATE jobs
+	q1 := `UPDATE jobs
 	         SET status = 'started'
-					   WHERE gene_id = $1`
+					 WHERE gene_id = (SELECT gene_id
+															FROM jobs
+															WHERE status = 'pending'
+															LIMIT 1)
+				RETURNING gene_id`
 
-	err := db.QueryRow(q1).Scan(&id, &genomeID, &gene, &sequence)
+	q2 := `SELECT genome_id, gene, sequence
+	        FROM genes
+					WHERE id = $1`
+
+	err := db.QueryRow(q1).Scan(&id)
+	Check(err)
+
+	err = db.QueryRow(q2, id).Scan(&genomeID, &gene, &sequence)
 	Check(err)
 
 	seqRunes := []rune(sequence)
-
-	err = db.QueryRow(q2, id).Scan()
-	if err != sql.ErrNoRows {
-		Check(err)
-	}
 
 	return Gene{ID: id, GenomeID: genomeID, Gene: gene, Seq: seqRunes,
 		SeqLen: len(seqRunes)}
